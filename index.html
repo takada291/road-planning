@@ -53,7 +53,7 @@
 <body>
 
 <div id="controls">
-    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v0.1[A3横サイズ枠]</span>
+    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v1.0[A3横サイズ枠]</span>
     
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -130,8 +130,8 @@
     <div id="map"></div>
     <div id="chart-container">
         <div id="chart-header">
-            <span>📉 縦断図（プロファイル）</span>
-            <span id="gradient-warning" style="color: red; display: none;">⚠️ 指定勾配を超過している区間があります！</span>
+            <span>📉 縦断図</span>
+            <span id="gradient-warning" style="color: red; display: none;">⚠️ 指定勾配を超過した区間（赤丸）あり！</span>
         </div>
         <div style="flex-grow: 1; position: relative;">
             <canvas id="profileChart"></canvas>
