@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>路網計画 (road-planning)</title>
+    <title>路網計画</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
@@ -20,19 +20,11 @@
         
         #controls { padding: 10px; background: #f8f9fa; display: flex; gap: 8px; align-items: center; z-index: 1000; border-bottom: 1px solid #ccc; flex-wrap: wrap; font-size: 14px; }
         
-        /* 画面を上下に分割（上：地図、下：縦断図） */
         #main-container { display: flex; flex-direction: column; flex-grow: 1; height: calc(100vh - 60px); }
-        #map { flex-grow: 1; width: 100%; min-height: 50%; }
+        #map { flex-grow: 1; width: 100%; min-height: 50%; cursor: crosshair; }
         
         #chart-container { 
-            height: 250px; 
-            width: 100%; 
-            background: #fff; 
-            border-top: 2px solid #ccc; 
-            box-sizing: border-box; 
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
+            height: 250px; width: 100%; background: #fff; border-top: 2px solid #ccc; box-sizing: border-box; padding: 10px; display: flex; flex-direction: column;
         }
         #chart-header { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #333; }
         
@@ -41,11 +33,12 @@
         .btn-green { background-color: #28a745; } .btn-green:hover { background-color: #218838; }
         .btn-red { background-color: #dc3545; } .btn-red:hover { background-color: #c82333; }
         .btn-gray { background-color: #6c757d; } .btn-gray:hover { background-color: #5a6268; }
+        .btn-orange { background-color: #ff9800; } .btn-orange:hover { background-color: #e68a00; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         
         select, input[type="text"] { padding: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
         
-        .mode-active { border: 2px solid #ff9800; box-shadow: 0 0 8px rgba(255,152,0,0.8); }
+        .mode-active { border: 2px solid #d32f2f; box-shadow: 0 0 8px rgba(211,47,47,0.8); background-color: #c82333;}
         
         #loading { display: none; font-weight: bold; color: #d32f2f; font-size: 14px; animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0.5; } }
@@ -56,9 +49,52 @@
 <div id="controls">
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
+        <option value="40.824,140.740">青森県</option>
+        <option value="39.703,141.152">岩手県</option>
+        <option value="38.268,140.871">宮城県</option>
+        <option value="39.718,140.102">秋田県</option>
+        <option value="38.255,140.339">山形県</option>
+        <option value="37.750,140.467">福島県</option>
+        <option value="36.341,140.446">茨城県</option>
+        <option value="36.565,139.883">栃木県</option>
+        <option value="36.391,139.060">群馬県</option>
+        <option value="35.857,139.648">埼玉県</option>
+        <option value="35.605,140.123">千葉県</option>
         <option value="35.689,139.691">東京都</option>
+        <option value="35.447,139.642">神奈川県</option>
+        <option value="37.902,139.023">新潟県</option>
+        <option value="36.695,137.211">富山県</option>
+        <option value="36.594,136.625">石川県</option>
         <option value="36.065,136.221" selected>福井県</option> 
-        <!-- 他の都道府県は省略していますが、実稼働時は前回のリストをそのままご使用ください -->
+        <option value="35.663,138.568">山梨県</option>
+        <option value="36.651,138.181">長野県</option>
+        <option value="35.391,136.722">岐阜県</option>
+        <option value="34.976,138.383">静岡県</option>
+        <option value="35.180,136.906">愛知県</option>
+        <option value="34.730,136.508">三重県</option>
+        <option value="35.021,135.755">滋賀県</option>
+        <option value="35.011,135.768">京都府</option>
+        <option value="34.686,135.520">大阪府</option>
+        <option value="34.691,135.183">兵庫県</option>
+        <option value="34.685,135.832">奈良県</option>
+        <option value="34.226,135.167">和歌山県</option>
+        <option value="35.503,134.238">鳥取県</option>
+        <option value="35.472,133.050">島根県</option>
+        <option value="34.661,133.935">岡山県</option>
+        <option value="34.396,132.459">広島県</option>
+        <option value="34.186,131.470">山口県</option>
+        <option value="34.065,134.559">徳島県</option>
+        <option value="34.340,134.043">香川県</option>
+        <option value="33.841,132.766">愛媛県</option>
+        <option value="33.559,133.531">高知県</option>
+        <option value="33.606,130.418">福岡県</option>
+        <option value="33.249,130.298">佐賀県</option>
+        <option value="32.744,129.873">長崎県</option>
+        <option value="32.789,130.741">熊本県</option>
+        <option value="33.238,131.612">大分県</option>
+        <option value="31.911,131.423">宮崎県</option>
+        <option value="31.560,130.558">鹿児島県</option>
+        <option value="26.212,127.681">沖縄県</option>
     </select>
     
     <input type="text" id="latLonInput" placeholder="緯度, 経度" style="width: 120px;">
@@ -66,7 +102,7 @@
     
     |
     <label>縦断勾配限界: 
-        <select id="maxGradient">
+        <select id="maxGradient" onchange="updateChart()">
             <option value="5">5%</option>
             <option value="10" selected>10%</option>
             <option value="15">15%</option>
@@ -74,14 +110,13 @@
         </select>
     </label>
     |
-    <button class="btn-blue" id="btnB" onclick="setMode('B')">始点(B)</button>
-    <button class="btn-red" id="btnE" onclick="setMode('E')">終点(E)</button>
-    <button class="btn-green" id="btnPass" onclick="setMode('Pass')">通る(〇)</button>
-    <button class="btn-gray" id="btnAvoid" onclick="setMode('Avoid')">避ける(×)</button>
+    <button class="btn-red" id="btnDraw" onclick="toggleDrawMode()">🖍️ 描画モード</button>
+    <button class="btn-orange" onclick="undoLastPoint()">↩️ UNDO</button>
+    <button class="btn-gray" onclick="clearRoute()">🗑️ クリア</button>
     |
-    <button class="btn-blue" onclick="simulateRoute()" style="background-color:#17a2b8;">🚀 線形シミュレート</button>
+    <span style="font-weight: bold; color: #555;">[A3横サイズ枠]</span>
     <button class="btn-gray" onclick="exportA3()">💾 A3画像切出</button>
-    <span id="loading">計算中...</span>
+    <span id="loading">標高取得中...</span>
 </div>
 
 <div id="main-container">
@@ -96,7 +131,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- グラフ描画用 Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
@@ -114,60 +148,100 @@
     L.control.layers({ "標準地形図": stdMap, "オルソ写真": orthoMap }).addTo(map);
     L.control.scale({ imperial: false, metric: true }).addTo(map);
 
-    // --- A3横切り出し枠（林小班図アプリ用連携） ---
+    // --- A3横切り出し枠 ---
     const frameLayer = L.rectangle([[0,0], [0,0]], {
         color: "#ff0000", weight: 2, fillOpacity: 0.0, interactive: false, dashArray: '5, 5'
+    }).addTo(map);
+    
+    const frameLabel = L.marker([0,0], {
+        icon: L.divIcon({className: 'dummy', html: '<div style="color:red; font-weight:bold; text-shadow: 1px 1px 2px white; width:100px;">A3横サイズ</div>'})
     }).addTo(map);
 
     function updateFrame() {
         const center = map.getCenter();
-        const latM = 2100 / 2; // A3スケール想定
+        const latM = 2100 / 2; // A3スケール
         const lngM = 1485 / 2;
         const R = 6378137;
         const dLat = (lngM / R) * (180 / Math.PI);
         const dLng = (latM / (R * Math.cos(Math.PI * center.lat / 180))) * (180 / Math.PI);
-        frameLayer.setBounds(L.latLngBounds([center.lat - dLat, center.lng - dLng], [center.lat + dLat, center.lng + dLng]));
+        
+        const bounds = L.latLngBounds([center.lat - dLat, center.lng - dLng], [center.lat + dLat, center.lng + dLng]);
+        frameLayer.setBounds(bounds);
+        frameLabel.setLatLng([center.lat + dLat, center.lng - dLng]); // 左上にラベル
     }
     map.on('move', updateFrame);
     updateFrame();
 
-    // --- 2. 状態管理とクリック入力 ---
-    let currentMode = null; // 'B', 'E', 'Pass', 'Avoid'
-    const points = { B: null, E: null, Pass: [], Avoid: [] };
-    const markers = { B: null, E: null, Pass: [], Avoid: [] };
+    // --- 2. 状態管理（手動描画） ---
+    let isDrawMode = false;
+    let isFetching = false;
+    let routeData = []; // [{lat, lng, ele, dist, grad}]
     let routePolyline = null;
-    let routeVertices = []; // 変化点マーカー
-    let routeData = [];     // グラフ用データ [{dist, ele, lat, lng}]
+    let routeMarkers = [];
 
-    function setMode(mode) {
-        currentMode = mode;
-        document.querySelectorAll('button').forEach(b => b.classList.remove('mode-active'));
-        document.getElementById('btn' + mode).classList.add('mode-active');
+    function toggleDrawMode() {
+        isDrawMode = !isDrawMode;
+        const btn = document.getElementById('btnDraw');
+        if (isDrawMode) {
+            btn.classList.add('mode-active');
+            map.getContainer().style.cursor = 'crosshair';
+        } else {
+            btn.classList.remove('mode-active');
+            map.getContainer().style.cursor = 'grab';
+        }
     }
 
-    map.on('click', function(e) {
-        if (!currentMode) return;
+    map.on('click', async function(e) {
+        if (!isDrawMode || isFetching) return;
+        isFetching = true;
+        document.getElementById('loading').style.display = 'inline';
+
         const latlng = e.latlng;
+        const ele = await getElevation(latlng.lat, latlng.lng);
         
-        if (currentMode === 'B' || currentMode === 'E') {
-            if (markers[currentMode]) map.removeLayer(markers[currentMode]);
-            const color = currentMode === 'B' ? 'blue' : 'red';
-            markers[currentMode] = L.circleMarker(latlng, { color: color, radius: 8, fillOpacity: 0.8 }).addTo(map)
-                .bindTooltip(currentMode, {permanent: true, direction: "center", className: "label"}).openTooltip();
-            points[currentMode] = latlng;
-        } else if (currentMode === 'Pass' || currentMode === 'Avoid') {
-            if (points[currentMode].length >= 10) {
-                alert(`「${currentMode}」ポイントは10箇所までです。`);
-                return;
+        let dist = 0;
+        let totalDist = 0;
+        let grad = 0;
+
+        if (routeData.length > 0) {
+            const prev = routeData[routeData.length - 1];
+            dist = map.distance([prev.lat, prev.lng], [latlng.lat, latlng.lng]);
+            totalDist = prev.dist + dist;
+            
+            if (dist > 0) {
+                grad = ((ele - prev.ele) / dist) * 100; // 上りはプラス、下りはマイナス
             }
-            const color = currentMode === 'Pass' ? 'green' : 'black';
-            const text = currentMode === 'Pass' ? '〇' : '×';
-            const m = L.circleMarker(latlng, { color: color, radius: 6, fillOpacity: 0.8 }).addTo(map)
-                .bindTooltip(text, {permanent: true, direction: "center"}).openTooltip();
-            markers[currentMode].push(m);
-            points[currentMode].push(latlng);
         }
+
+        routeData.push({
+            lat: latlng.lat,
+            lng: latlng.lng,
+            ele: ele,
+            dist: totalDist,
+            grad: grad
+        });
+
+        drawRouteOnMap();
+        updateChart();
+
+        document.getElementById('loading').style.display = 'none';
+        isFetching = false;
     });
+
+    function undoLastPoint() {
+        if (routeData.length === 0) return;
+        routeData.pop();
+        drawRouteOnMap();
+        updateChart();
+    }
+
+    function clearRoute() {
+        if (confirm("ルートをすべてクリアしますか？")) {
+            routeData = [];
+            drawRouteOnMap();
+            updateChart();
+        }
+    }
 
     // --- 3. 標高取得 (DEM) ---
     async function getElevation(lat, lng) {
@@ -182,9 +256,9 @@
                 const img = await loadImage(url);
                 const ele = readPixelElevation(img, lat, lng, x, y, z);
                 if (ele !== null) return ele;
-            } catch (e) { /* 次のDEMタイプへ */ }
+            } catch (e) { /* 次のDEMへ */ }
         }
-        return 0; // 取得失敗時
+        return 0;
     }
 
     function loadImage(url) {
@@ -203,7 +277,6 @@
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
         
-        // 緯度経度からタイル内のピクセル座標を計算
         const px = Math.floor(((lng + 180) / 360 * Math.pow(2, z) - tx) * 256);
         const py = Math.floor(((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z) - ty) * 256);
         
@@ -214,80 +287,27 @@
         return (v < 8388608) ? v * 0.01 : (v - 16777216) * 0.01;
     }
 
-    // --- 4. 線形シミュレート ---
-    async function simulateRoute() {
-        if (!points.B || !points.E) {
-            alert("始点(B)と終点(E)を設定してください。");
-            return;
-        }
-        document.getElementById('loading').style.display = 'inline';
-        
-        // 簡単な補間ロジック（実際はここに本格的なルーティングやA*を実装）
-        // B -> Pass(順に) -> E を結ぶ
-        let waypoints = [points.B, ...points.Pass, points.E];
-        let simulatedLine = [];
-        
-        for (let i = 0; i < waypoints.length; i++) {
-            simulatedLine.push(waypoints[i]);
-            // 中間点を細かく生成する場合はここに補間処理を入れる
-        }
-
-        // 標高取得
-        routeData = [];
-        let totalDist = 0;
-        let isPossible = true;
-        const maxGrad = parseFloat(document.getElementById('maxGradient').value);
-
-        for (let i = 0; i < simulatedLine.length; i++) {
-            const pt = simulatedLine[i];
-            const ele = await getElevation(pt.lat, pt.lng);
-            
-            if (i > 0) {
-                const prev = routeData[i-1];
-                const dist = map.distance([prev.lat, prev.lng], [pt.lat, pt.lng]);
-                totalDist += dist;
-                const grad = Math.abs((ele - prev.ele) / dist) * 100;
-                
-                // 初回シミュレート時に無理なら弾く（本格実装時のモック）
-                if (grad > maxGrad + 10) { 
-                    isPossible = false;
-                }
-            }
-            routeData.push({ lat: pt.lat, lng: pt.lng, ele: ele, dist: totalDist });
-        }
-
-        document.getElementById('loading').style.display = 'none';
-
-        if (!isPossible) {
-            alert("線形の設定が不可です、縦断勾配などを見直してください。");
-            return;
-        }
-
-        drawRouteOnMap();
-        updateChart();
-    }
-
-    // --- 5. マップへの描画と手修正（ドラッグ）対応 ---
+    // --- 4. マップへの描画 ---
     function drawRouteOnMap() {
         if (routePolyline) map.removeLayer(routePolyline);
-        routeVertices.forEach(m => map.removeLayer(m));
-        routeVertices = [];
+        routeMarkers.forEach(m => map.removeLayer(m));
+        routeMarkers = [];
+
+        if (routeData.length === 0) return;
 
         const latlngs = routeData.map(d => [d.lat, d.lng]);
-        routePolyline = L.polyline(latlngs, {color: '#ff7800', weight: 4}).addTo(map);
+        routePolyline = L.polyline(latlngs, {color: '#007bff', weight: 4}).addTo(map);
 
         routeData.forEach((d, idx) => {
-            const m = L.circleMarker([d.lat, d.lng], { color: '#ff7800', fillColor: '#fff', fillOpacity: 1, radius: 5 })
+            const isEndpoint = (idx === 0 || idx === routeData.length - 1);
+            const color = idx === 0 ? 'blue' : (idx === routeData.length - 1 ? 'red' : '#ff9800');
+            const m = L.circleMarker([d.lat, d.lng], { color: color, fillColor: '#fff', fillOpacity: 1, radius: isEndpoint ? 6 : 4 })
                 .addTo(map);
-            
-            // 手動ドラッグ（ここではLeaflet標準マーカーの代わりに簡易ドラッグ実装か、Leaflet.Draw推奨。今回はモックとしてクリックで位置微調整等）
-            // ※本来は draggable: true の L.marker を使用します
-            
-            routeVertices.push(m);
+            routeMarkers.push(m);
         });
     }
 
-    // --- 6. 縦断図 (Chart.js) ---
+    // --- 5. 縦断図 (Chart.js) ---
     let myChart = null;
     function updateChart() {
         const ctx = document.getElementById('profileChart').getContext('2d');
@@ -302,14 +322,10 @@
             labels.push(Math.round(routeData[i].dist) + 'm');
             elevations.push(routeData[i].ele);
             
-            // 勾配チェック
             let color = '#36a2eb';
             if (i > 0) {
-                const distDiff = routeData[i].dist - routeData[i-1].dist;
-                const eleDiff = Math.abs(routeData[i].ele - routeData[i-1].ele);
-                const grad = (eleDiff / distDiff) * 100;
-                if (grad > maxGrad) {
-                    color = '#ff6384'; // 勾配オーバーは赤
+                if (Math.abs(routeData[i].grad) > maxGrad) {
+                    color = '#ff6384'; // 指定勾配オーバー
                     hasWarning = true;
                 }
             }
@@ -319,6 +335,9 @@
         document.getElementById('gradient-warning').style.display = hasWarning ? 'inline' : 'none';
 
         if (myChart) myChart.destroy();
+        
+        if (routeData.length === 0) return; // データなし時は描画しない
+
         myChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -337,6 +356,19 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let idx = context.dataIndex;
+                                let ele = routeData[idx].ele.toFixed(1);
+                                let grad = routeData[idx].grad.toFixed(1);
+                                if (idx === 0) return `標高: ${ele}m (起点)`;
+                                return `標高: ${ele}m / 勾配: ${grad > 0 ? '+' : ''}${grad}%`;
+                            }
+                        }
+                    }
+                },
                 scales: {
                     x: { title: { display: true, text: '距離 (m)' } },
                     y: { title: { display: true, text: '標高 (m)' } }
@@ -355,7 +387,7 @@
         if (inputVal.length >= 2) map.setView([parseFloat(inputVal[0]), parseFloat(inputVal[1])], 15);
     }
     function exportA3() {
-        alert("ここにA3切り出し（Canvas結合＆Exif付与）の処理を追加します（微地形図アプリと同様）。");
+        alert("画像の作成・保存処理をここに実装します（微地形図アプリのcanvas処理等を流用）。");
     }
 </script>
 </body>
