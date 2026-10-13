@@ -35,6 +35,7 @@
         .btn-gray { background-color: #6c757d; } .btn-gray:hover { background-color: #5a6268; }
         .btn-orange { background-color: #ff9800; } .btn-orange:hover { background-color: #e68a00; }
         .btn-purple { background-color: #9c27b0; } .btn-purple:hover { background-color: #7b1fa2; }
+        .btn-teal { background-color: #20c997; } .btn-teal:hover { background-color: #1aa179; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         
         select, input[type="text"] { padding: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
@@ -54,7 +55,7 @@
 <body>
 
 <div id="controls">
-    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v1.1[A3横サイズ枠]</span>
+    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v1.2[A3横サイズ枠]</span>
     
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -123,6 +124,10 @@
     <button class="btn-orange" onclick="undoLastPoint()">↩️ UNDO</button>
     <button class="btn-gray" onclick="clearRoute()">🗑️ クリア</button>
     |
+    <button class="btn-green" onclick="saveKML()">💾 保存(KML)</button>
+    <button class="btn-teal" onclick="document.getElementById('kmlInput').click()">📂 読込(KML)</button>
+    <input type="file" id="kmlInput" accept=".kml" style="display: none;" onchange="loadKML(event)">
+    |
     <button class="btn-purple" onclick="createElevationLayer()">🗺️ 5m標高色分</button>
     <button class="btn-gray" id="btnExport" onclick="exportA3()">💾 A3画像切出</button>
     <span id="loading">処理中...</span>
@@ -143,7 +148,6 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<!-- Piexifjs for Exif data -->
 <script src="https://unpkg.com/piexifjs@1.0.6/piexif.js"></script>
 
 <script>
@@ -184,7 +188,7 @@
     let routePolyline = null;
     let routeMarkers = [];
     let myChart = null;
-    let elevationOverlay = null; // 標高色分けレイヤー
+    let elevationOverlay = null;
 
     function toggleDrawMode() {
         isDrawMode = !isDrawMode;
@@ -232,7 +236,7 @@
                 dist = map.distance([prev.lat, prev.lng], [routeData[i].lat, routeData[i].lng]);
                 totalDist += dist;
                 if (dist > 0) {
-                    grad = ((routeData[i].ele - prev.ele) / dist) * 100; // 上りはプラス、下りはマイナス
+                    grad = ((routeData[i].ele - prev.ele) / dist) * 100;
                 }
             }
             routeData[i].dist = totalDist;
@@ -254,6 +258,116 @@
             drawRouteOnMap();
             updateChart();
         }
+    }
+
+    // --- KML保存・読込処理 ---
+    function saveKML() {
+        if (routeData.length === 0) {
+            alert("保存するデータがありません。");
+            return;
+        }
+
+        let kml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+        kml += '<kml xmlns="http://www.opengis.net/kml/2.2">\n';
+        kml += '  <Document>\n';
+        kml += '    <name>路網計画ルート</name>\n';
+        kml += '    <description>路網計画アプリ(v1.2)から出力されたデータ</description>\n';
+        
+        // ライン
+        kml += '    <Placemark>\n';
+        kml += '      <name>計画線形</name>\n';
+        kml += '      <LineString>\n';
+        kml += '        <tessellate>1</tessellate>\n';
+        kml += '        <coordinates>\n';
+        routeData.forEach(d => {
+            kml += `          ${d.lng},${d.lat},${d.ele}\n`;
+        });
+        kml += '        </coordinates>\n';
+        kml += '      </LineString>\n';
+        kml += '    </Placemark>\n';
+
+        // 各ポイント（マーカー）
+        routeData.forEach((d, idx) => {
+            kml += '    <Placemark>\n';
+            kml += `      <name>Point ${idx + 1}</name>\n`;
+            kml += `      <description>標高: ${d.ele.toFixed(1)}m</description>\n`;
+            kml += '      <Point>\n';
+            kml += `        <coordinates>${d.lng},${d.lat},${d.ele}</coordinates>\n`;
+            kml += '      </Point>\n';
+            kml += '    </Placemark>\n';
+        });
+
+        kml += '  </Document>\n';
+        kml += '</kml>';
+
+        const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'road_planning.kml';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    }
+
+    function loadKML(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            try {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(e.target.result, "text/xml");
+                
+                const lineStrings = xmlDoc.getElementsByTagName("LineString");
+                if (lineStrings.length === 0) {
+                    alert("KMLファイルからルート線(LineString)を見つけることができませんでした。");
+                    return;
+                }
+                
+                const coordsText = lineStrings[0].getElementsByTagName("coordinates")[0].textContent;
+                const coordPairs = coordsText.trim().split(/\s+/);
+                
+                if (coordPairs.length === 0) return;
+
+                routeData = [];
+                document.getElementById('loading').style.display = 'inline';
+                document.getElementById('loading').innerText = 'データ読込中...';
+                
+                for (let i = 0; i < coordPairs.length; i++) {
+                    const parts = coordPairs[i].split(',');
+                    if (parts.length >= 2) {
+                        const lng = parseFloat(parts[0]);
+                        const lat = parseFloat(parts[1]);
+                        let ele = parts.length >= 3 ? parseFloat(parts[2]) : null;
+                        
+                        if (ele === null || isNaN(ele) || ele === 0) {
+                            ele = await getElevation(lat, lng);
+                        }
+                        
+                        routeData.push({ lat: lat, lng: lng, ele: ele, dist: 0, grad: 0 });
+                    }
+                }
+
+                recalculateRoute();
+                drawRouteOnMap();
+                updateChart();
+                
+                if (routePolyline) {
+                    map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+                }
+
+            } catch (error) {
+                console.error(error);
+                alert("KMLファイルの読み込み処理に失敗しました。");
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                event.target.value = ''; // 連続して同じファイルを選択可能にするため
+            }
+        };
+        reader.readAsText(file);
     }
 
     async function getElevation(lat, lng) {
@@ -312,11 +426,11 @@
         const maxGrad = parseFloat(document.getElementById('maxGradient').value);
 
         routeData.forEach((d, idx) => {
-            let bgColor = '#36a2eb'; // デフォルト青
+            let bgColor = '#36a2eb';
             if (idx > 0 && Math.abs(d.grad) > maxGrad) {
-                bgColor = '#ff6384'; // 指定勾配オーバー時は赤
+                bgColor = '#ff6384';
             } else if (idx === 0) {
-                bgColor = '#4caf50'; // 起点は緑
+                bgColor = '#4caf50';
             }
 
             const iconHtml = `<div class="custom-marker" style="background-color: ${bgColor};"></div>`;
@@ -324,7 +438,6 @@
 
             const marker = L.marker([d.lat, d.lng], { icon: customIcon, draggable: true }).addTo(map);
             
-            // ドラッグ終了時の処理（座標更新・標高再取得・再計算）
             marker.on('dragend', async function(e) {
                 document.getElementById('loading').style.display = 'inline';
                 isFetching = true;
@@ -362,7 +475,7 @@
             let color = '#36a2eb';
             if (i > 0) {
                 if (Math.abs(routeData[i].grad) > maxGrad) {
-                    color = '#ff6384'; // 指定勾配オーバー
+                    color = '#ff6384';
                     hasWarning = true;
                 }
             } else if (i === 0) {
@@ -397,7 +510,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 layout: {
-                    padding: { left: 10, right: 30 } // 距離ラベルが見切れないようにパディング追加
+                    padding: { left: 10, right: 30 }
                 },
                 plugins: {
                     tooltip: {
@@ -429,7 +542,6 @@
         loading.style.display = 'inline';
         loading.innerText = "色分けデータ生成中...";
 
-        // 既存のレイヤーがあれば削除
         if (elevationOverlay) {
             map.removeLayer(elevationOverlay);
             elevationOverlay = null;
@@ -453,7 +565,6 @@
             canvas.height = (maxTileY - minTileY + 1) * tw;
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-            // タイル取得用のヘルパー関数
             const fetchDemTile = (x, y, z) => {
                 return new Promise((resolve) => {
                     const types = ['dem5a_png', 'dem5b_png', 'dem5c_png'];
@@ -500,7 +611,6 @@
                 return (v < 8388608) ? v * 0.01 : (v - 16777216) * 0.01;
             };
 
-            // 5m間隔の色分け定義 (20色)
             const colors = [
                 [0, 0, 128], [0, 0, 255], [0, 128, 255], [0, 255, 255], [128, 255, 128],
                 [0, 255, 0], [128, 255, 0], [255, 255, 0], [255, 128, 0], [255, 0, 0],
@@ -515,23 +625,21 @@
                     const zC = getZ(idx);
                     
                     if (zC === null) {
-                        outData.data[idx+3] = 0; // 透明
+                        outData.data[idx+3] = 0;
                         continue;
                     }
                     
-                    // 5m刻みで色を割り当て
                     const colorIdx = Math.floor(zC / 5) % colors.length;
                     const c = colors[colorIdx];
                     
                     outData.data[idx] = c[0];
                     outData.data[idx+1] = c[1];
                     outData.data[idx+2] = c[2];
-                    outData.data[idx+3] = 128; // 半透明(0.5)
+                    outData.data[idx+3] = 128;
                 }
             }
             ctx.putImageData(outData, 0, 0);
 
-            // A3枠サイズでクロップ
             const pxWest = Math.round(topLeft.x - minTileX * 256);
             const pxNorth = Math.round(topLeft.y - minTileY * 256);
             const cropW = Math.round(bottomRight.x - topLeft.x);
@@ -581,7 +689,6 @@
             canvas.height = (maxTileY - minTileY + 1) * tw;
             const ctx = canvas.getContext('2d');
 
-            // 背景地図として地理院の標準地図を取得
             const promises = [];
             for (let x = minTileX; x <= maxTileX; x++) {
                 for (let y = minTileY; y <= maxTileY; y++) {
@@ -593,23 +700,21 @@
                             ctx.drawImage(img, (x - minTileX) * tw, (y - minTileY) * tw);
                             resolve();
                         };
-                        img.onerror = resolve; // 失敗しても進行
+                        img.onerror = resolve;
                     }));
                 }
             }
             await Promise.all(promises);
             
-            // 色分けレイヤーが表示されていれば重ね描きする
             if (elevationOverlay) {
                  const overlayImg = new Image();
                  overlayImg.crossOrigin = 'anonymous';
                  overlayImg.src = elevationOverlay._url;
                  await new Promise((resolve) => {
                      overlayImg.onload = () => {
-                         // クロップ前の座標に合わせて描画
                          const pxWest = Math.round(topLeft.x - minTileX * tw);
                          const pxNorth = Math.round(topLeft.y - minTileY * tw);
-                         ctx.globalAlpha = 0.7; // 透過度合わせ
+                         ctx.globalAlpha = 0.7;
                          ctx.drawImage(overlayImg, pxWest, pxNorth);
                          ctx.globalAlpha = 1.0;
                          resolve();
@@ -617,7 +722,6 @@
                  });
             }
 
-            // ルートの描画
             if (routeData.length > 0) {
                 ctx.beginPath();
                 ctx.strokeStyle = '#007bff';
@@ -631,7 +735,6 @@
                 }
                 ctx.stroke();
 
-                // マーカーの描画
                 const maxGrad = parseFloat(document.getElementById('maxGradient').value);
                 for (let i = 0; i < routeData.length; i++) {
                     const pt = map.project([routeData[i].lat, routeData[i].lng], z);
@@ -651,7 +754,6 @@
                 }
             }
 
-            // A3枠サイズでクロップ
             const pxWest = Math.round(topLeft.x - minTileX * tw);
             const pxNorth = Math.round(topLeft.y - minTileY * tw);
             const cropW = Math.round(bottomRight.x - topLeft.x);
@@ -668,7 +770,6 @@
             
             const exportDataUrl = cropCanvas.toDataURL('image/jpeg', 0.95);
 
-            // EXIF追加とダウンロード
             const s = bounds.getSouth().toFixed(6);
             const w = bounds.getWest().toFixed(6);
             const n = bounds.getNorth().toFixed(6);
@@ -683,7 +784,6 @@
             const newDataUrl = piexif.insert(exifBytes, exportDataUrl);
             const filename = `road-planning_${s}_${w}_${n}_${e}.jpg`;
             
-            // DataURL -> Blob
             const arr = newDataUrl.split(',');
             const mime = arr[0].match(/:(.*?);/)[1];
             const bstr = atob(arr[1]);
@@ -710,7 +810,6 @@
         }
     }
 
-    // --- ユーティリティ ---
     function changePref() {
         const val = document.getElementById("prefSelect").value.split(",");
         map.setView([parseFloat(val[0]), parseFloat(val[1])], 14);
@@ -719,7 +818,6 @@
         const inputVal = document.getElementById("latLonInput").value.replace(/,/g, ' ').trim().split(/\s+/);
         if (inputVal.length >= 2) map.setView([parseFloat(inputVal[0]), parseFloat(inputVal[1])], 15);
     }
-
 </script>
 </body>
 </html>
