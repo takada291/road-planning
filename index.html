@@ -34,6 +34,7 @@
         .btn-red { background-color: #dc3545; } .btn-red:hover { background-color: #c82333; }
         .btn-gray { background-color: #6c757d; } .btn-gray:hover { background-color: #5a6268; }
         .btn-orange { background-color: #ff9800; } .btn-orange:hover { background-color: #e68a00; }
+        .btn-purple { background-color: #9c27b0; } .btn-purple:hover { background-color: #7b1fa2; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         
         select, input[type="text"] { padding: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
@@ -53,7 +54,7 @@
 <body>
 
 <div id="controls">
-    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v1.0[A3横サイズ枠]</span>
+    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v1.1[A3横サイズ枠]</span>
     
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -122,6 +123,7 @@
     <button class="btn-orange" onclick="undoLastPoint()">↩️ UNDO</button>
     <button class="btn-gray" onclick="clearRoute()">🗑️ クリア</button>
     |
+    <button class="btn-purple" onclick="createElevationLayer()">🗺️ 5m標高色分</button>
     <button class="btn-gray" id="btnExport" onclick="exportA3()">💾 A3画像切出</button>
     <span id="loading">処理中...</span>
 </div>
@@ -182,6 +184,7 @@
     let routePolyline = null;
     let routeMarkers = [];
     let myChart = null;
+    let elevationOverlay = null; // 標高色分けレイヤー
 
     function toggleDrawMode() {
         isDrawMode = !isDrawMode;
@@ -420,6 +423,140 @@
         });
     }
 
+    // --- 5m標高色分け機能 ---
+    async function createElevationLayer() {
+        const loading = document.getElementById('loading');
+        loading.style.display = 'inline';
+        loading.innerText = "色分けデータ生成中...";
+
+        // 既存のレイヤーがあれば削除
+        if (elevationOverlay) {
+            map.removeLayer(elevationOverlay);
+            elevationOverlay = null;
+        }
+
+        try {
+            const bounds = frameLayer.getBounds();
+            const z = 15;
+            
+            const topLeft = map.project(bounds.getNorthWest(), z);
+            const bottomRight = map.project(bounds.getSouthEast(), z);
+
+            const minTileX = Math.floor(topLeft.x / 256);
+            const minTileY = Math.floor(topLeft.y / 256);
+            const maxTileX = Math.floor(bottomRight.x / 256);
+            const maxTileY = Math.floor(bottomRight.y / 256);
+
+            const tw = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = (maxTileX - minTileX + 1) * tw;
+            canvas.height = (maxTileY - minTileY + 1) * tw;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+            // タイル取得用のヘルパー関数
+            const fetchDemTile = (x, y, z) => {
+                return new Promise((resolve) => {
+                    const types = ['dem5a_png', 'dem5b_png', 'dem5c_png'];
+                    let currentIdx = 0;
+                    
+                    const tryNext = () => {
+                        if (currentIdx >= types.length) {
+                            resolve(null);
+                            return;
+                        }
+                        const img = new Image();
+                        img.crossOrigin = 'anonymous';
+                        img.src = `https://cyberjapandata.gsi.go.jp/xyz/${types[currentIdx]}/${z}/${x}/${y}.png`;
+                        img.onload = () => resolve(img);
+                        img.onerror = () => {
+                            currentIdx++;
+                            tryNext();
+                        };
+                    };
+                    tryNext();
+                });
+            };
+
+            const promises = [];
+            for (let x = minTileX; x <= maxTileX; x++) {
+                for (let y = minTileY; y <= maxTileY; y++) {
+                    promises.push(fetchDemTile(x, y, z).then(img => {
+                        if (img) {
+                            ctx.drawImage(img, (x - minTileX) * tw, (y - minTileY) * tw);
+                        }
+                    }));
+                }
+            }
+            await Promise.all(promises);
+
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imgData.data;
+            const outData = ctx.createImageData(canvas.width, canvas.height);
+            
+            const getZ = (i) => {
+                const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+                if (a === 0 || (r === 128 && g === 0 && b === 0) || (r === 0 && g === 0 && b === 0)) return null;
+                const v = (r << 16) + (g << 8) + b;
+                return (v < 8388608) ? v * 0.01 : (v - 16777216) * 0.01;
+            };
+
+            // 5m間隔の色分け定義 (20色)
+            const colors = [
+                [0, 0, 128], [0, 0, 255], [0, 128, 255], [0, 255, 255], [128, 255, 128],
+                [0, 255, 0], [128, 255, 0], [255, 255, 0], [255, 128, 0], [255, 0, 0],
+                [128, 0, 0], [255, 0, 255], [128, 0, 128], [255, 128, 255], [128, 128, 255],
+                [0, 128, 128], [128, 128, 0], [128, 128, 128], [192, 192, 192], [255, 255, 255]
+            ];
+
+            const w = canvas.width;
+            for (let py = 0; py < canvas.height; py++) {
+                for (let px = 0; px < w; px++) {
+                    const idx = (py * w + px) * 4;
+                    const zC = getZ(idx);
+                    
+                    if (zC === null) {
+                        outData.data[idx+3] = 0; // 透明
+                        continue;
+                    }
+                    
+                    // 5m刻みで色を割り当て
+                    const colorIdx = Math.floor(zC / 5) % colors.length;
+                    const c = colors[colorIdx];
+                    
+                    outData.data[idx] = c[0];
+                    outData.data[idx+1] = c[1];
+                    outData.data[idx+2] = c[2];
+                    outData.data[idx+3] = 128; // 半透明(0.5)
+                }
+            }
+            ctx.putImageData(outData, 0, 0);
+
+            // A3枠サイズでクロップ
+            const pxWest = Math.round(topLeft.x - minTileX * 256);
+            const pxNorth = Math.round(topLeft.y - minTileY * 256);
+            const cropW = Math.round(bottomRight.x - topLeft.x);
+            const cropH = Math.round(bottomRight.y - topLeft.y);
+            
+            const cropCanvas = document.createElement('canvas');
+            cropCanvas.width = cropW;
+            cropCanvas.height = cropH;
+            const cropCtx = cropCanvas.getContext('2d');
+            
+            cropCtx.drawImage(canvas, pxWest, pxNorth, cropW, cropH, 0, 0, cropW, cropH);
+            
+            const exportDataUrl = cropCanvas.toDataURL('image/png');
+            
+            elevationOverlay = L.imageOverlay(exportDataUrl, bounds, { opacity: 0.7 }).addTo(map);
+
+        } catch (error) {
+            console.error("色分けエラー:", error);
+            alert("標高色分けの作成に失敗しました。\n" + error.message);
+        } finally {
+            loading.style.display = 'none';
+            loading.innerText = '処理中...';
+        }
+    }
+
     async function exportA3() {
         const btnExport = document.getElementById('btnExport');
         const loading = document.getElementById('loading');
@@ -461,6 +598,24 @@
                 }
             }
             await Promise.all(promises);
+            
+            // 色分けレイヤーが表示されていれば重ね描きする
+            if (elevationOverlay) {
+                 const overlayImg = new Image();
+                 overlayImg.crossOrigin = 'anonymous';
+                 overlayImg.src = elevationOverlay._url;
+                 await new Promise((resolve) => {
+                     overlayImg.onload = () => {
+                         // クロップ前の座標に合わせて描画
+                         const pxWest = Math.round(topLeft.x - minTileX * tw);
+                         const pxNorth = Math.round(topLeft.y - minTileY * tw);
+                         ctx.globalAlpha = 0.7; // 透過度合わせ
+                         ctx.drawImage(overlayImg, pxWest, pxNorth);
+                         ctx.globalAlpha = 1.0;
+                         resolve();
+                     };
+                 });
+            }
 
             // ルートの描画
             if (routeData.length > 0) {
