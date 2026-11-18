@@ -151,7 +151,7 @@
         <input type="number" id="minRadius" value="12" min="1" max="200" step="1" style="width: 52px;" oninput="updateCurvesAndDisplay()">m
     </label>
     <label style="cursor: pointer; user-select: none;">
-        <input type="checkbox" id="showRadius" checked onchange="updateCurvesAndDisplay()"> R表示
+        <input type="checkbox" id="showRadiusLabel" checked onchange="updateCurvesAndDisplay()"> Rラベル
     </label>
     |
     <button class="btn-red" id="btnDraw" onclick="toggleDrawMode()">🖍️ 描画</button>
@@ -424,10 +424,12 @@
 
     function drawCurvesOnMap() {
         curveLayerGroup.clearLayers();
-        const showRadius = document.getElementById('showRadius').checked;
-        if (!showRadius || curveData.length === 0) return;
+        if (curveData.length === 0) return;
+
+        const showRadiusLabel = document.getElementById('showRadiusLabel').checked;
 
         curveData.forEach(c => {
+            // 円弧は常時描画
             if (c.arcLatLngs.length >= 2) {
                 L.polyline(c.arcLatLngs, {
                     color: c.isWarning ? '#dc3545' : '#28a745',
@@ -437,20 +439,23 @@
                 }).addTo(curveLayerGroup);
             }
 
-            const labelClass = c.isWarning ? 'r-label r-label-warn' : 'r-label r-label-ok';
-            const rText = `R=${c.radius.toFixed(1)}m`;
-            const icon = L.divIcon({
-                html: `<div class="${labelClass}">${rText}</div>`,
-                className: 'r-label-wrapper',
-                iconSize: [0, 0],
-                iconAnchor: [0, 0]
-            });
+            // RラベルはチェックON時のみ描画
+            if (showRadiusLabel) {
+                const labelClass = c.isWarning ? 'r-label r-label-warn' : 'r-label r-label-ok';
+                const rText = `R=${c.radius.toFixed(1)}m`;
+                const icon = L.divIcon({
+                    html: `<div class="${labelClass}">${rText}</div>`,
+                    className: 'r-label-wrapper',
+                    iconSize: [0, 0],
+                    iconAnchor: [0, 0]
+                });
 
-            L.marker(c.labelLatLng, {
-                icon: icon,
-                interactive: false,
-                zIndexOffset: c.isWarning ? 500 : 200
-            }).addTo(curveLayerGroup);
+                L.marker(c.labelLatLng, {
+                    icon: icon,
+                    interactive: false,
+                    zIndexOffset: c.isWarning ? 500 : 200
+                }).addTo(curveLayerGroup);
+            }
         });
     }
 
@@ -975,9 +980,8 @@
                 }
                 ctx.stroke();
 
-                // R表示がONの場合は円弧も描画
-                const showRadius = document.getElementById('showRadius').checked;
-                if (showRadius && curveData.length > 0) {
+                // 円弧は常時描画
+                if (curveData.length > 0) {
                     curveData.forEach(c => {
                         if (c.arcLatLngs.length >= 2) {
                             ctx.beginPath();
@@ -1014,8 +1018,9 @@
                     ctx.stroke();
                 }
 
-                // R数値ラベルを最前面に描画
-                if (showRadius && curveData.length > 0) {
+                // R数値ラベルはチェックON時のみ描画
+                const showRadiusLabel = document.getElementById('showRadiusLabel').checked;
+                if (showRadiusLabel && curveData.length > 0) {
                     ctx.font = 'bold 11px sans-serif';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
