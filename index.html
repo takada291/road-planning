@@ -83,7 +83,7 @@
 <body>
 
 <div id="controls">
-    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v1.3</span>
+    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v1.4</span>
     
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -163,7 +163,7 @@
     <input type="file" id="kmlInput" accept=".kml" style="display: none;" onchange="loadKML(event)">
     |
     <button class="btn-purple" onclick="createElevationLayer()">🗺️ 5m標高</button>
-    <button class="btn-gray" id="btnExport" onclick="exportA3()">💾 A3切出</button>
+    <button class="btn-gray" id="btnExport" onclick="exportA4()">💾 A4切出</button>
     <span id="loading">処理中...</span>
 </div>
 
@@ -207,11 +207,12 @@
 
     function updateFrame() {
         const center = map.getCenter();
-        const latM = 2100 / 2; // A3スケール
-        const lngM = 1485 / 2;
+        // A4横サイズ（1/5,000相当：東西 1485m × 南北 1050m）
+        const widthM = 1485 / 2;
+        const heightM = 1050 / 2;
         const R = 6378137;
-        const dLat = (lngM / R) * (180 / Math.PI);
-        const dLng = (latM / (R * Math.cos(Math.PI * center.lat / 180))) * (180 / Math.PI);
+        const dLat = (heightM / R) * (180 / Math.PI);
+        const dLng = (widthM / (R * Math.cos(Math.PI * center.lat / 180))) * (180 / Math.PI);
         
         const bounds = L.latLngBounds([center.lat - dLat, center.lng - dLng], [center.lat + dLat, center.lng + dLng]);
         frameLayer.setBounds(bounds);
@@ -495,7 +496,7 @@
         kml += '<kml xmlns="http://www.opengis.net/kml/2.2">\n';
         kml += '  <Document>\n';
         kml += '    <name>路網計画ルート</name>\n';
-        kml += '    <description>路網計画アプリ(v1.3)から出力されたデータ</description>\n';
+        kml += '    <description>路網計画アプリ(v1.4)から出力されたデータ</description>\n';
         
         // ライン
         kml += '    <Placemark>\n';
@@ -793,7 +794,7 @@
 
         try {
             const bounds = frameLayer.getBounds();
-            const z = 15;
+            const z = 15; // 地理院DEM5A/5B/5CはZoom 15が最大
             
             const topLeft = map.project(bounds.getNorthWest(), z);
             const bottomRight = map.project(bounds.getSouthEast(), z);
@@ -909,16 +910,17 @@
         }
     }
 
-    async function exportA3() {
+    async function exportA4() {
         const btnExport = document.getElementById('btnExport');
         const loading = document.getElementById('loading');
         
         try {
             loading.style.display = 'inline';
+            loading.innerText = 'A4画像生成中...';
             btnExport.disabled = true;
 
             const bounds = frameLayer.getBounds();
-            const z = 15;
+            const z = 17; // 高精細A4出力（測点マーク・円弧が重なりにくい解像度）
             const topLeft = map.project(bounds.getNorthWest(), z);
             const bottomRight = map.project(bounds.getSouthEast(), z);
 
@@ -950,19 +952,26 @@
             }
             await Promise.all(promises);
             
+            // 5m標高色分けレイヤーが表示されている場合、正確な座標範囲に合わせて合成
             if (elevationOverlay) {
                  const overlayImg = new Image();
                  overlayImg.crossOrigin = 'anonymous';
                  overlayImg.src = elevationOverlay._url;
+                 const ovBounds = elevationOverlay.getBounds();
+                 const ovTL = map.project(ovBounds.getNorthWest(), z);
+                 const ovBR = map.project(ovBounds.getSouthEast(), z);
                  await new Promise((resolve) => {
                      overlayImg.onload = () => {
-                         const pxWest = Math.round(topLeft.x - minTileX * tw);
-                         const pxNorth = Math.round(topLeft.y - minTileY * tw);
+                         const ox = ovTL.x - minTileX * tw;
+                         const oy = ovTL.y - minTileY * tw;
+                         const ow = ovBR.x - ovTL.x;
+                         const oh = ovBR.y - ovTL.y;
                          ctx.globalAlpha = 0.7;
-                         ctx.drawImage(overlayImg, pxWest, pxNorth);
+                         ctx.drawImage(overlayImg, ox, oy, ow, oh);
                          ctx.globalAlpha = 1.0;
                          resolve();
                      };
+                     overlayImg.onerror = resolve;
                  });
             }
 
@@ -1021,7 +1030,7 @@
                 // R数値ラベルはチェックON時のみ描画
                 const showRadiusLabel = document.getElementById('showRadiusLabel').checked;
                 if (showRadiusLabel && curveData.length > 0) {
-                    ctx.font = 'bold 11px sans-serif';
+                    ctx.font = 'bold 12px sans-serif';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     curveData.forEach(c => {
@@ -1030,9 +1039,9 @@
                         const cy = pt.y - (minTileY * tw);
                         const text = `R=${c.radius.toFixed(1)}m`;
                         const metrics = ctx.measureText(text);
-                        const padX = 4;
+                        const padX = 5;
                         const boxW = metrics.width + padX * 2;
-                        const boxH = 16;
+                        const boxH = 18;
 
                         ctx.fillStyle = c.isWarning ? '#dc3545' : 'rgba(255,255,255,0.92)';
                         ctx.fillRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
@@ -1060,7 +1069,7 @@
             cropCtx.fillRect(0, 0, cropW, cropH);
             cropCtx.drawImage(canvas, pxWest, pxNorth, cropW, cropH, 0, 0, cropW, cropH);
             
-            const exportDataUrl = cropCanvas.toDataURL('image/jpeg', 0.95);
+            const exportDataUrl = cropCanvas.toDataURL('image/jpeg', 0.92);
 
             const s = bounds.getSouth().toFixed(6);
             const w = bounds.getWest().toFixed(6);
@@ -1098,6 +1107,7 @@
             alert("画像の作成に失敗しました。\n" + error.message);
         } finally {
             loading.style.display = 'none';
+            loading.innerText = '処理中...';
             btnExport.disabled = false;
         }
     }
