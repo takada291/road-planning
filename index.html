@@ -41,7 +41,8 @@
         
         select, input[type="text"], input[type="number"] { padding: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
         
-        .mode-active { border: 2px solid #d32f2f; box-shadow: 0 0 8px rgba(211,47,47,0.8); background-color: #c82333;}
+        .mode-active { border: 2px solid #d32f2f; box-shadow: 0 0 8px rgba(211,47,47,0.8); background-color: #c82333; }
+        .elev-active { border: 2px solid #4a148c; box-shadow: 0 0 8px rgba(156,39,176,0.8); background-color: #6a1b9a; }
         
         #loading { display: none; font-weight: bold; color: #d32f2f; font-size: 14px; animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0.5; } }
@@ -162,7 +163,7 @@
     <button class="btn-teal" onclick="document.getElementById('kmlInput').click()">📂 読込</button>
     <input type="file" id="kmlInput" accept=".kml" style="display: none;" onchange="loadKML(event)">
     |
-    <button class="btn-purple" onclick="createElevationLayer()">🗺️ 5m標高</button>
+    <button class="btn-purple" id="btnElevation" onclick="toggleElevationLayer()">🗺️ 5m標高</button>
     <button class="btn-gray" id="btnExport" onclick="exportA4()">💾 A4切出</button>
     <span id="loading">処理中...</span>
 </div>
@@ -781,16 +782,23 @@
         });
     }
 
-    // --- 5m標高色分け機能 ---
-    async function createElevationLayer() {
+    // --- 5m標高色分け機能（ON/OFFトグル） ---
+    async function toggleElevationLayer() {
+        const btn = document.getElementById('btnElevation');
         const loading = document.getElementById('loading');
-        loading.style.display = 'inline';
-        loading.innerText = "色分けデータ生成中...";
 
+        // すでに表示されている場合は非表示に戻す
         if (elevationOverlay) {
             map.removeLayer(elevationOverlay);
             elevationOverlay = null;
+            btn.textContent = '🗺️ 5m標高';
+            btn.classList.remove('elev-active');
+            return;
         }
+
+        loading.style.display = 'inline';
+        loading.innerText = "色分けデータ生成中...";
+        btn.disabled = true;
 
         try {
             const bounds = frameLayer.getBounds();
@@ -900,6 +908,8 @@
             const exportDataUrl = cropCanvas.toDataURL('image/png');
             
             elevationOverlay = L.imageOverlay(exportDataUrl, bounds, { opacity: 0.7 }).addTo(map);
+            btn.textContent = '🗺️ 標高戻す';
+            btn.classList.add('elev-active');
 
         } catch (error) {
             console.error("色分けエラー:", error);
@@ -907,6 +917,7 @@
         } finally {
             loading.style.display = 'none';
             loading.innerText = '処理中...';
+            btn.disabled = false;
         }
     }
 
