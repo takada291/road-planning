@@ -139,7 +139,7 @@
     <button class="btn-gray" onclick="jumpToCoordinates()">移動</button>
     
     |
-    <label>縦断勾配限界: 
+    <label>基準勾配: 
         <select id="maxGradient" onchange="updateChart(); drawRouteOnMap();">
             <option value="5">5%</option>
             <option value="10" selected>10%</option>
@@ -154,16 +154,16 @@
         <input type="checkbox" id="showRadius" checked onchange="updateCurvesAndDisplay()"> R表示
     </label>
     |
-    <button class="btn-red" id="btnDraw" onclick="toggleDrawMode()">🖍️ 描画モード</button>
-    <button class="btn-orange" onclick="undoLastPoint()">↩️ UNDO</button>
-    <button class="btn-gray" onclick="clearRoute()">🗑️ クリア</button>
+    <button class="btn-red" id="btnDraw" onclick="toggleDrawMode()">🖍️ 描画</button>
+    <button class="btn-orange" onclick="undoLastPoint()">↩️ 戻る</button>
+    <button class="btn-gray" onclick="clearRoute()">🗑️ 消去</button>
     |
-    <button class="btn-green" onclick="saveKML()">💾 保存(KML)</button>
-    <button class="btn-teal" onclick="document.getElementById('kmlInput').click()">📂 読込(KML)</button>
+    <button class="btn-green" onclick="saveKML()">💾 保存</button>
+    <button class="btn-teal" onclick="document.getElementById('kmlInput').click()">📂 読込</button>
     <input type="file" id="kmlInput" accept=".kml" style="display: none;" onchange="loadKML(event)">
     |
-    <button class="btn-purple" onclick="createElevationLayer()">🗺️ 5m標高色分</button>
-    <button class="btn-gray" id="btnExport" onclick="exportA3()">💾 A3画像切出</button>
+    <button class="btn-purple" onclick="createElevationLayer()">🗺️ 5m標高</button>
+    <button class="btn-gray" id="btnExport" onclick="exportA3()">💾 A3切出</button>
     <span id="loading">処理中...</span>
 </div>
 
