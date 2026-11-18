@@ -26,7 +26,8 @@
         #chart-container { 
             height: 250px; width: 100%; background: #fff; border-top: 2px solid #ccc; box-sizing: border-box; padding: 10px; display: flex; flex-direction: column;
         }
-        #chart-header { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #333; }
+        #chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #333; flex-wrap: wrap; gap: 10px; }
+        #warnings-area { display: flex; gap: 12px; align-items: center; }
         
         button { padding: 6px 12px; font-size: 13px; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; }
         .btn-blue { background-color: #007bff; } .btn-blue:hover { background-color: #0056b3; }
@@ -38,7 +39,7 @@
         .btn-teal { background-color: #20c997; } .btn-teal:hover { background-color: #1aa179; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         
-        select, input[type="text"] { padding: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
+        select, input[type="text"], input[type="number"] { padding: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
         
         .mode-active { border: 2px solid #d32f2f; box-shadow: 0 0 8px rgba(211,47,47,0.8); background-color: #c82333;}
         
@@ -50,12 +51,39 @@
             width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;
             box-shadow: 0 0 4px rgba(0,0,0,0.5);
         }
+
+        /* 回転半径(R)ラベルのスタイル */
+        .r-label-wrapper {
+            pointer-events: none;
+        }
+        .r-label {
+            position: relative;
+            transform: translate(-50%, -50%);
+            display: inline-block;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 1px 5px;
+            border-radius: 3px;
+            white-space: nowrap;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+            pointer-events: none;
+        }
+        .r-label-ok {
+            background: rgba(255, 255, 255, 0.92);
+            color: #198754;
+            border: 1.5px solid #28a745;
+        }
+        .r-label-warn {
+            background: #dc3545;
+            color: #ffffff;
+            border: 1.5px solid #ffffff;
+        }
     </style>
 </head>
 <body>
 
 <div id="controls">
-    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v1.2[A3横サイズ枠]</span>
+    <span style="font-weight: bold; color: #333; margin-right: 10px;">路網計画v1.3</span>
     
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -119,6 +147,12 @@
             <option value="20">20%</option>
         </select>
     </label>
+    <label>基準R: 
+        <input type="number" id="minRadius" value="12" min="1" max="200" step="1" style="width: 52px;" oninput="updateCurvesAndDisplay()">m
+    </label>
+    <label style="cursor: pointer; user-select: none;">
+        <input type="checkbox" id="showRadius" checked onchange="updateCurvesAndDisplay()"> R表示
+    </label>
     |
     <button class="btn-red" id="btnDraw" onclick="toggleDrawMode()">🖍️ 描画モード</button>
     <button class="btn-orange" onclick="undoLastPoint()">↩️ UNDO</button>
@@ -138,7 +172,10 @@
     <div id="chart-container">
         <div id="chart-header">
             <span>📉 縦断図</span>
-            <span id="gradient-warning" style="color: red; display: none;">⚠️ 指定勾配を超過した区間（赤丸）あり！</span>
+            <div id="warnings-area">
+                <span id="gradient-warning" style="color: red; display: none;">⚠️ 指定勾配を超過した区間（赤丸）あり！</span>
+                <span id="radius-warning" style="color: #dc3545; display: none;">⚠️ 基準R未満のカーブ（赤円弧）あり！</span>
+            </div>
         </div>
         <div style="flex-grow: 1; position: relative;">
             <canvas id="profileChart"></canvas>
@@ -184,9 +221,11 @@
 
     let isDrawMode = false;
     let isFetching = false;
-    let routeData = []; // [{lat, lng, ele, dist, grad}]
+    let routeData = []; // [{lat, lng, ele, dist, grad, radius}]
+    let curveData = []; // [{index, radius, isWarning, arcLatLngs, labelLatLng}]
     let routePolyline = null;
     let routeMarkers = [];
+    const curveLayerGroup = L.layerGroup().addTo(map);
     let myChart = null;
     let elevationOverlay = null;
 
@@ -215,7 +254,8 @@
             lng: latlng.lng,
             ele: ele,
             dist: 0,
-            grad: 0
+            grad: 0,
+            radius: null
         });
 
         recalculateRoute();
@@ -242,6 +282,182 @@
             routeData[i].dist = totalDist;
             routeData[i].grad = grad;
         }
+        calculateCurves();
+    }
+
+    // --- 回転半径（R）・単曲線円弧の計算 ---
+    function calculateCurves() {
+        curveData = [];
+        routeData.forEach(d => d.radius = null);
+
+        if (routeData.length < 3) {
+            document.getElementById('radius-warning').style.display = 'none';
+            return;
+        }
+
+        const minR = parseFloat(document.getElementById('minRadius').value) || 12;
+        const EARTH_R = 6378137.0;
+        let hasRadiusWarning = false;
+
+        for (let i = 1; i < routeData.length - 1; i++) {
+            const pPrev = routeData[i - 1];
+            const pCurr = routeData[i];
+            const pNext = routeData[i + 1];
+
+            // 頂点 pCurr を原点とする局所平面メートル座標に変換
+            const latRad = pCurr.lat * Math.PI / 180;
+            const mPerDegLat = (Math.PI / 180) * EARTH_R;
+            const mPerDegLng = (Math.PI / 180) * EARTH_R * Math.cos(latRad);
+
+            const ax = (pPrev.lng - pCurr.lng) * mPerDegLng;
+            const ay = (pPrev.lat - pCurr.lat) * mPerDegLat;
+            const cx = (pNext.lng - pCurr.lng) * mPerDegLng;
+            const cy = (pNext.lat - pCurr.lat) * mPerDegLat;
+
+            const L1 = Math.hypot(ax, ay);
+            const L2 = Math.hypot(cx, cy);
+            if (L1 < 0.5 || L2 < 0.5) continue;
+
+            // 単位ベクトル（頂点から前後点への方向）
+            const u1x = ax / L1, u1y = ay / L1;
+            const u2x = cx / L2, u2y = cy / L2;
+
+            // 2ベクトルの内角 theta と進行方向の屈曲角 delta
+            const dot = Math.max(-1, Math.min(1, u1x * u2x + u1y * u2y));
+            const theta = Math.acos(dot);
+            const delta = Math.PI - theta;
+
+            // 屈曲角が5度未満は直線とみなしてスキップ
+            if (delta < 5 * Math.PI / 180) continue;
+
+            // ほぼ180度折り返し（鋭角すぎる場合）
+            if (theta < 1 * Math.PI / 180) {
+                routeData[i].radius = 0;
+                hasRadiusWarning = true;
+                curveData.push({
+                    index: i,
+                    radius: 0,
+                    isWarning: true,
+                    arcLatLngs: [],
+                    labelLatLng: [pCurr.lat, pCurr.lng]
+                });
+                continue;
+            }
+
+            // 隣接カーブと干渉しない最大接線長を算出
+            const avail1 = (i === 1) ? L1 * 0.95 : L1 * 0.5;
+            const avail2 = (i === routeData.length - 2) ? L2 * 0.95 : L2 * 0.5;
+            const tlAvail = Math.min(avail1, avail2);
+
+            const tanHalfTheta = Math.tan(theta / 2);
+            const sinHalfTheta = Math.sin(theta / 2);
+            const rMax = tlAvail * tanHalfTheta;
+
+            // 基準Rを満たせる場合、折れ線から極端に離れすぎない範囲（外線長SL<=10m目安、最低でも基準R確保）に調整
+            let rUsed;
+            if (rMax < minR) {
+                rUsed = rMax;
+            } else {
+                const slFactor = (1 / sinHalfTheta) - 1;
+                const rLimitBySL = slFactor > 0.0001 ? (10.0 / slFactor) : 9999;
+                rUsed = Math.min(rMax, Math.max(minR, rLimitBySL));
+            }
+
+            const isWarning = rUsed < minR;
+            routeData[i].radius = rUsed;
+
+            // 基準以上かつ極めて緩やかな曲線（R > 200m）は地図の視認性のため描画省略
+            if (!isWarning && rUsed > 200) continue;
+
+            if (isWarning) hasRadiusWarning = true;
+
+            const tlUsed = rUsed / tanHalfTheta;
+
+            // 曲線始点(BC)・終点(EC)のローカル座標
+            const bcX = tlUsed * u1x;
+            const bcY = tlUsed * u1y;
+            const ecX = tlUsed * u2x;
+            const ecY = tlUsed * u2y;
+
+            // 角の二等分線方向に円弧中心(O)を配置
+            const bx = u1x + u2x;
+            const by = u1y + u2y;
+            const bLen = Math.hypot(bx, by);
+            if (bLen < 1e-6) continue;
+
+            const distToCenter = rUsed / sinHalfTheta;
+            const ox = (bx / bLen) * distToCenter;
+            const oy = (by / bLen) * distToCenter;
+
+            // 中心からBC・ECへの角度と円弧の掃引角
+            const startAngle = Math.atan2(bcY - oy, bcX - ox);
+            const endAngle = Math.atan2(ecY - oy, ecX - ox);
+            let dAngle = endAngle - startAngle;
+            while (dAngle > Math.PI) dAngle -= 2 * Math.PI;
+            while (dAngle < -Math.PI) dAngle += 2 * Math.PI;
+
+            // 円弧の点列（16分割）を緯度経度へ逆変換
+            const steps = 16;
+            const arcLatLngs = [];
+            for (let s = 0; s <= steps; s++) {
+                const ang = startAngle + dAngle * (s / steps);
+                const px = ox + rUsed * Math.cos(ang);
+                const py = oy + rUsed * Math.sin(ang);
+                arcLatLngs.push([
+                    pCurr.lat + py / mPerDegLat,
+                    pCurr.lng + px / mPerDegLng
+                ]);
+            }
+
+            const midLatLng = arcLatLngs[Math.floor(steps / 2)];
+            curveData.push({
+                index: i,
+                radius: rUsed,
+                isWarning: isWarning,
+                arcLatLngs: arcLatLngs,
+                labelLatLng: midLatLng
+            });
+        }
+
+        document.getElementById('radius-warning').style.display = hasRadiusWarning ? 'inline' : 'none';
+    }
+
+    function drawCurvesOnMap() {
+        curveLayerGroup.clearLayers();
+        const showRadius = document.getElementById('showRadius').checked;
+        if (!showRadius || curveData.length === 0) return;
+
+        curveData.forEach(c => {
+            if (c.arcLatLngs.length >= 2) {
+                L.polyline(c.arcLatLngs, {
+                    color: c.isWarning ? '#dc3545' : '#28a745',
+                    weight: c.isWarning ? 5 : 4,
+                    opacity: 0.95,
+                    interactive: false
+                }).addTo(curveLayerGroup);
+            }
+
+            const labelClass = c.isWarning ? 'r-label r-label-warn' : 'r-label r-label-ok';
+            const rText = `R=${c.radius.toFixed(1)}m`;
+            const icon = L.divIcon({
+                html: `<div class="${labelClass}">${rText}</div>`,
+                className: 'r-label-wrapper',
+                iconSize: [0, 0],
+                iconAnchor: [0, 0]
+            });
+
+            L.marker(c.labelLatLng, {
+                icon: icon,
+                interactive: false,
+                zIndexOffset: c.isWarning ? 500 : 200
+            }).addTo(curveLayerGroup);
+        });
+    }
+
+    function updateCurvesAndDisplay() {
+        calculateCurves();
+        drawCurvesOnMap();
+        updateChart();
     }
 
     function undoLastPoint() {
@@ -255,6 +471,9 @@
     function clearRoute() {
         if (confirm("ルートをすべてクリアしますか？")) {
             routeData = [];
+            curveData = [];
+            curveLayerGroup.clearLayers();
+            document.getElementById('radius-warning').style.display = 'none';
             drawRouteOnMap();
             updateChart();
         }
@@ -271,7 +490,7 @@
         kml += '<kml xmlns="http://www.opengis.net/kml/2.2">\n';
         kml += '  <Document>\n';
         kml += '    <name>路網計画ルート</name>\n';
-        kml += '    <description>路網計画アプリ(v1.2)から出力されたデータ</description>\n';
+        kml += '    <description>路網計画アプリ(v1.3)から出力されたデータ</description>\n';
         
         // ライン
         kml += '    <Placemark>\n';
@@ -288,9 +507,10 @@
 
         // 各ポイント（マーカー）
         routeData.forEach((d, idx) => {
+            const rInfo = (d.radius !== null && d.radius !== undefined) ? ` / R: ${d.radius.toFixed(1)}m` : '';
             kml += '    <Placemark>\n';
             kml += `      <name>Point ${idx + 1}</name>\n`;
-            kml += `      <description>標高: ${d.ele.toFixed(1)}m</description>\n`;
+            kml += `      <description>標高: ${d.ele.toFixed(1)}m${rInfo}</description>\n`;
             kml += '      <Point>\n';
             kml += `        <coordinates>${d.lng},${d.lat},${d.ele}</coordinates>\n`;
             kml += '      </Point>\n';
@@ -347,7 +567,7 @@
                             ele = await getElevation(lat, lng);
                         }
                         
-                        routeData.push({ lat: lat, lng: lng, ele: ele, dist: 0, grad: 0 });
+                        routeData.push({ lat: lat, lng: lng, ele: ele, dist: 0, grad: 0, radius: null });
                     }
                 }
 
@@ -364,6 +584,7 @@
                 alert("KMLファイルの読み込み処理に失敗しました。");
             } finally {
                 document.getElementById('loading').style.display = 'none';
+                document.getElementById('loading').innerText = '処理中...';
                 event.target.value = ''; // 連続して同じファイルを選択可能にするため
             }
         };
@@ -417,11 +638,15 @@
         if (routePolyline) map.removeLayer(routePolyline);
         routeMarkers.forEach(m => map.removeLayer(m));
         routeMarkers = [];
+        curveLayerGroup.clearLayers();
 
         if (routeData.length === 0) return;
 
         const latlngs = routeData.map(d => [d.lat, d.lng]);
-        routePolyline = L.polyline(latlngs, {color: '#007bff', weight: 4}).addTo(map);
+        routePolyline = L.polyline(latlngs, {color: '#007bff', weight: 3, opacity: 0.75}).addTo(map);
+
+        // 円弧とRラベルを描画
+        drawCurvesOnMap();
 
         const maxGrad = parseFloat(document.getElementById('maxGradient').value);
 
@@ -438,6 +663,18 @@
 
             const marker = L.marker([d.lat, d.lng], { icon: customIcon, draggable: true }).addTo(map);
             
+            // ドラッグ中もリアルタイムに折れ線・円弧・R数値を更新
+            marker.on('drag', function(e) {
+                const pos = e.target.getLatLng();
+                routeData[idx].lat = pos.lat;
+                routeData[idx].lng = pos.lng;
+                if (routePolyline) {
+                    routePolyline.setLatLngs(routeData.map(pt => [pt.lat, pt.lng]));
+                }
+                calculateCurves();
+                drawCurvesOnMap();
+            });
+
             marker.on('dragend', async function(e) {
                 document.getElementById('loading').style.display = 'inline';
                 isFetching = true;
@@ -519,8 +756,10 @@
                                 let idx = context.dataIndex;
                                 let ele = routeData[idx].ele.toFixed(1);
                                 let grad = routeData[idx].grad.toFixed(1);
+                                let rVal = routeData[idx].radius;
+                                let rStr = (rVal !== null && rVal !== undefined) ? ` / R: ${rVal.toFixed(1)}m` : '';
                                 if (idx === 0) return `標高: ${ele}m (起点)`;
-                                return `標高: ${ele}m / 勾配: ${grad > 0 ? '+' : ''}${grad}%`;
+                                return `標高: ${ele}m / 勾配: ${grad > 0 ? '+' : ''}${grad}%${rStr}`;
                             }
                         }
                     }
@@ -723,9 +962,10 @@
             }
 
             if (routeData.length > 0) {
+                // 折れ線ルート
                 ctx.beginPath();
                 ctx.strokeStyle = '#007bff';
-                ctx.lineWidth = 4;
+                ctx.lineWidth = 3;
                 for (let i = 0; i < routeData.length; i++) {
                     const pt = map.project([routeData[i].lat, routeData[i].lng], z);
                     const cx = pt.x - (minTileX * tw);
@@ -735,6 +975,27 @@
                 }
                 ctx.stroke();
 
+                // R表示がONの場合は円弧も描画
+                const showRadius = document.getElementById('showRadius').checked;
+                if (showRadius && curveData.length > 0) {
+                    curveData.forEach(c => {
+                        if (c.arcLatLngs.length >= 2) {
+                            ctx.beginPath();
+                            ctx.strokeStyle = c.isWarning ? '#dc3545' : '#28a745';
+                            ctx.lineWidth = c.isWarning ? 5 : 4;
+                            c.arcLatLngs.forEach((ll, idx) => {
+                                const pt = map.project(ll, z);
+                                const cx = pt.x - (minTileX * tw);
+                                const cy = pt.y - (minTileY * tw);
+                                if (idx === 0) ctx.moveTo(cx, cy);
+                                else ctx.lineTo(cx, cy);
+                            });
+                            ctx.stroke();
+                        }
+                    });
+                }
+
+                // マーカー
                 const maxGrad = parseFloat(document.getElementById('maxGradient').value);
                 for (let i = 0; i < routeData.length; i++) {
                     const pt = map.project([routeData[i].lat, routeData[i].lng], z);
@@ -751,6 +1012,32 @@
                     ctx.lineWidth = 2;
                     ctx.strokeStyle = '#ffffff';
                     ctx.stroke();
+                }
+
+                // R数値ラベルを最前面に描画
+                if (showRadius && curveData.length > 0) {
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    curveData.forEach(c => {
+                        const pt = map.project(c.labelLatLng, z);
+                        const cx = pt.x - (minTileX * tw);
+                        const cy = pt.y - (minTileY * tw);
+                        const text = `R=${c.radius.toFixed(1)}m`;
+                        const metrics = ctx.measureText(text);
+                        const padX = 4;
+                        const boxW = metrics.width + padX * 2;
+                        const boxH = 16;
+
+                        ctx.fillStyle = c.isWarning ? '#dc3545' : 'rgba(255,255,255,0.92)';
+                        ctx.fillRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+                        ctx.strokeStyle = c.isWarning ? '#ffffff' : '#28a745';
+                        ctx.lineWidth = 1.5;
+                        ctx.strokeRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+
+                        ctx.fillStyle = c.isWarning ? '#ffffff' : '#198754';
+                        ctx.fillText(text, cx, cy);
+                    });
                 }
             }
 
